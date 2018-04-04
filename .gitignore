@@ -30,3 +30,6 @@
 *.exe
 *.out
 *.app
+
+#ABP Keys
+arduino/abp_keys.h
