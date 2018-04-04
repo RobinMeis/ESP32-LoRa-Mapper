@@ -2,6 +2,11 @@
 #include <hal/hal.h>
 #include <SPI.h>
 #include "abp_keys.h"
+#include "gps_config.h"
+#include <TinyGPS++.h> //https://github.com/mikalhart/TinyGPSPlus
+#include <HardwareSerial.h>
+
+HardwareSerial gpsSerial(1); //We can use Hardware Serial for our GPS module on ESP32
 
 
 static const PROGMEM u1_t NWKSKEY[16] = NETWORK_SESSION_KEY; //Set these options in abp_keys.h
@@ -26,6 +31,8 @@ const lmic_pinmap lmic_pins = { // Pin mapping for TTGO with 3D antenna
   .rst = 14,
   .dio = {26, 32, 33},
 };
+
+TinyGPSPlus gps; //GPS
 
 void onEvent (ev_t ev) {
     Serial.print(os_getTime());
@@ -105,8 +112,10 @@ void do_send(osjob_t* j){
 }
 
 void setup() {
-    Serial.begin(115200);
+    Serial.begin(115200); //Debug Port
     Serial.println(F("Starting"));
+
+    gpsSerial.begin(GPS_BAUDRATE, SERIAL_8N1, GPS_RX, GPS_TX); //GPS Port, configure in gps_config.h
 
     os_init(); // LMIC init
     LMIC_reset();
@@ -136,5 +145,24 @@ void setup() {
 
 void loop() {
     os_runloop_once();
+
+    while (gpsSerial.available() > 0)
+        if (gps.encode(gpsSerial.read()))
+            displayGPS();
+}
+
+void displayGPS() { //Shows information about GPS status on serial console and OLED
+    if (gps.location.isValid()) {
+        Serial.print(F("GPS: lat: "));
+        Serial.print(gps.location.lat(), 6);
+        Serial.print(F(", lng: "));
+        Serial.print(gps.location.lng(), 6);
+        Serial.print(F(", alt: "));
+        Serial.print(gps.altitude.meters(), 6);
+        Serial.print(F(", HDOP: "));
+        Serial.print(gps.hdop.hdop(), 6);
+    } else
+        Serial.print(F("INVALID GPS DATA"));
+    Serial.println();
 }
 
