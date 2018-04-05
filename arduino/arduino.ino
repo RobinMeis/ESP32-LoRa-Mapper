@@ -6,7 +6,7 @@
 #include "oled_config.h"
 #include <TinyGPS++.h> //https://github.com/mikalhart/TinyGPSPlus
 #include <HardwareSerial.h>
-#include <U8x8lib.h>
+#include <U8x8lib.h> //https://github.com/olikraus/u8g2
 
 HardwareSerial gpsSerial(1); //We can use Hardware Serial for our GPS module on ESP32
 
@@ -109,8 +109,8 @@ void do_send(osjob_t* j){
     if (LMIC.opmode & OP_TXRXPEND) {
         Serial.println(F("OP_TXRXPEND, not sending"));
     } else {
-        sprintf(buffer, "Packet  : %u", packet_count++); //Update packet counter on OLED
-        u8x8.drawString(0, 0, buffer);
+        sprintf(buffer, "Pkt: %u", packet_count++); //Update packet counter on OLED
+        u8x8.drawString(0, 2, buffer);
 
         u8x8.setInverseFont(1);
         u8x8.drawString(0, 7, "Queued");
@@ -148,12 +148,21 @@ void do_send(osjob_t* j){
             sprintf(buffer, "Alt: %d m    ", altitudeGps);
             u8x8.drawString(0, 5, buffer);
             digitalWrite(LED_PIN, HIGH);
+
+            TinyGPSTime gps_time = gps.time; //Draw time
+            if (!gps_time.isValid())
+                u8x8.drawString(4, 0, "00:00:00");
+            else {
+                sprintf(buffer, "%02d:%02d:%02d ", gps_time.hour(), gps_time.minute(), gps_time.second());
+                u8x8.drawString(4, 0, buffer);
+            }
         } else { //Send heartbeat if invalid GPS data
             txBuffer[0] = 255;
             txBuffer[1] = '\0';
             LMIC_setTxData2(1, txBuffer, 1, 0);
             Serial.println(F("Heartbeat GPS packet queued"));
 
+            u8x8.drawString(4, 0, "00:00:00");
             u8x8.drawString(0, 3, "Lat: INVALID    ");
             u8x8.drawString(0, 4, "Lon: INVALID    ");
             u8x8.drawString(0, 5, "Alt: INVALID    ");
@@ -175,8 +184,8 @@ void setup() {
     delay(5000);
     u8x8.clear();
     
-    u8x8.drawString(0, 0, "Packet  : 0");
-
+    u8x8.drawString(4, 0, "00:00:00");
+    u8x8.drawString(0, 2, "Pkt: 0");
     u8x8.drawString(0, 3, "Lat: INVALID");
     u8x8.drawString(0, 4, "Lon: INVALID");
     u8x8.drawString(0, 5, "Alt: INVALID");
