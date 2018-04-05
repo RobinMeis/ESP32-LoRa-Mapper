@@ -71,7 +71,7 @@ void onEvent (ev_t ev) {
             break;
         case EV_TXCOMPLETE:
             Serial.println(F("EV_TXCOMPLETE (includes waiting for RX windows)"));
-            u8x8.clearLine(6);
+            u8x8.clearLine(7);
             if (LMIC.txrxFlags & TXRX_ACK)
               Serial.println(F("Received ack"));
             if (LMIC.dataLen) {
@@ -113,7 +113,7 @@ void do_send(osjob_t* j){
         u8x8.drawString(0, 0, buffer);
 
         u8x8.setInverseFont(1);
-        u8x8.drawString(0, 6, "Queued");
+        u8x8.drawString(0, 7, "Queued");
         u8x8.setInverseFont(0);
         
         if (gps.location.isValid() && gps.hdop.isValid() && gps.location.age() < 2000) { //Prepare payload, inspired by https://github.com/jpmeijers/RN2483-Arduino-Library/blob/master/examples/SodaqOne-TTN-Mapper-binary/SodaqOne-TTN-Mapper-binary.ino
@@ -169,6 +169,12 @@ void setup() {
   
     u8x8.begin();
     u8x8.setFont(u8x8_font_chroma48medium8_r);
+    u8x8.drawString(6, 2, "ESP32");
+    u8x8.drawString(3, 3, "LoRa Mapper");
+    u8x8.drawString(0, 7, "robin.meis.space");
+    delay(5000);
+    u8x8.clear();
+    
     u8x8.drawString(0, 0, "Packet  : 0");
 
     u8x8.drawString(0, 3, "Lat: INVALID");
