@@ -3,8 +3,10 @@
 #include <SPI.h>
 #include "abp_keys.h"
 #include "gps_config.h"
+#include "oled_config.h"
 #include <TinyGPS++.h> //https://github.com/mikalhart/TinyGPSPlus
 #include <HardwareSerial.h>
+#include <U8x8lib.h>
 
 HardwareSerial gpsSerial(1); //We can use Hardware Serial for our GPS module on ESP32
 
@@ -32,6 +34,9 @@ const lmic_pinmap lmic_pins = { // Pin mapping for TTGO with 3D antenna
 };
 
 TinyGPSPlus gps; //GPS
+U8X8_SSD1306_128X64_NONAME_SW_I2C u8x8(SCL_OLED, SDA_OLED, RST_OLED); //OLED
+unsigned int packet_count = 0;
+char buffer[20];
 
 void onEvent (ev_t ev) {
     Serial.print(os_getTime());
@@ -66,6 +71,7 @@ void onEvent (ev_t ev) {
             break;
         case EV_TXCOMPLETE:
             Serial.println(F("EV_TXCOMPLETE (includes waiting for RX windows)"));
+            u8x8.clearLine(6);
             if (LMIC.txrxFlags & TXRX_ACK)
               Serial.println(F("Received ack"));
             if (LMIC.dataLen) {
@@ -103,13 +109,22 @@ void do_send(osjob_t* j){
     if (LMIC.opmode & OP_TXRXPEND) {
         Serial.println(F("OP_TXRXPEND, not sending"));
     } else {
+        sprintf(buffer, "Packet  : %u", packet_count++); //Update packet counter on OLED
+        u8x8.drawString(0, 0, buffer);
+
+        u8x8.setInverseFont(1);
+        u8x8.drawString(0, 6, "Queued");
+        u8x8.setInverseFont(0);
+        
         if (gps.location.isValid() && gps.hdop.isValid() && gps.location.age() < 2000) { //Prepare payload, inspired by https://github.com/jpmeijers/RN2483-Arduino-Library/blob/master/examples/SodaqOne-TTN-Mapper-binary/SodaqOne-TTN-Mapper-binary.ino
+            float float_lat = gps.location.lat();
+            float float_lng = gps.location.lng();
             uint32_t LatitudeBinary, LongitudeBinary;
             uint16_t altitudeGps;
             uint8_t hdopGps;
 
-            LatitudeBinary = (((float)gps.location.lat() + 90) / 180) * 16777215;
-            LongitudeBinary = (((float)gps.location.lng() + 180) / 360) * 16777215;
+            LatitudeBinary = ((float_lat + 90) / 180) * 16777215;
+            LongitudeBinary = ((float_lng + 180) / 360) * 16777215;
             altitudeGps = gps.altitude.meters();
             hdopGps = gps.hdop.hdop()*10;
 
@@ -125,11 +140,24 @@ void do_send(osjob_t* j){
         
             LMIC_setTxData2(1, txBuffer, sizeof(txBuffer)-1, 0);
             Serial.println(F("Valid GPS packet queued"));
+
+            sprintf(buffer, "Lat: %f", float_lat); //Update OLED coordinates
+            u8x8.drawString(0, 3, buffer);
+            sprintf(buffer, "Lon: %f", float_lng);
+            u8x8.drawString(0, 4, buffer);
+            sprintf(buffer, "Alt: %d m    ", altitudeGps);
+            u8x8.drawString(0, 5, buffer);
+            digitalWrite(LED_PIN, HIGH);
         } else { //Send heartbeat if invalid GPS data
             txBuffer[0] = 255;
             txBuffer[1] = '\0';
             LMIC_setTxData2(1, txBuffer, 1, 0);
             Serial.println(F("Heartbeat GPS packet queued"));
+
+            u8x8.drawString(0, 3, "Lat: INVALID    ");
+            u8x8.drawString(0, 4, "Lon: INVALID    ");
+            u8x8.drawString(0, 5, "Alt: INVALID    ");
+            digitalWrite(LED_PIN, LOW);
         }
     }
     // Next TX is scheduled after TX_COMPLETE event.
@@ -138,6 +166,16 @@ void do_send(osjob_t* j){
 void setup() {
     Serial.begin(115200); //Debug Port
     Serial.println(F("Starting"));
+  
+    u8x8.begin();
+    u8x8.setFont(u8x8_font_chroma48medium8_r);
+    u8x8.drawString(0, 0, "Packet  : 0");
+
+    u8x8.drawString(0, 3, "Lat: INVALID");
+    u8x8.drawString(0, 4, "Lon: INVALID");
+    u8x8.drawString(0, 5, "Alt: INVALID");
+
+    pinMode(LED_PIN, OUTPUT); //Onboard LED (GPS Status)
 
     gpsSerial.begin(GPS_BAUDRATE, SERIAL_8N1, GPS_RX, GPS_TX); //GPS Port, configure in gps_config.h
 
