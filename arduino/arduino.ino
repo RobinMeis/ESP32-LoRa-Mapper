@@ -8,7 +8,6 @@
 
 HardwareSerial gpsSerial(1); //We can use Hardware Serial for our GPS module on ESP32
 
-
 static const PROGMEM u1_t NWKSKEY[16] = NETWORK_SESSION_KEY; //Set these options in abp_keys.h
 static const u1_t PROGMEM APPSKEY[16] = APP_SESSION_KEY;
 static const u4_t DEVADDR = DEVICE_ADDRESS;
@@ -17,10 +16,10 @@ void os_getArtEui (u1_t* buf) { } //Empty callbacks for ABP
 void os_getDevEui (u1_t* buf) { }
 void os_getDevKey (u1_t* buf) { }
 
-static uint8_t mydata[] = "Hello, world!";
+static uint8_t txBuffer[10];
 static osjob_t sendjob;
 
-const unsigned TX_INTERVAL = 5; // Schedule TX every this many seconds (might become longer due to duty cycle limitations).
+const unsigned TX_INTERVAL = 1; // Schedule TX every this many seconds (might become longer due to duty cycle limitations).
 
 const lmic_pinmap lmic_pins = { // Pin mapping for TTGO with 3D antenna
   .mosi = 27,
@@ -104,9 +103,34 @@ void do_send(osjob_t* j){
     if (LMIC.opmode & OP_TXRXPEND) {
         Serial.println(F("OP_TXRXPEND, not sending"));
     } else {
-        // Prepare upstream data transmission at the next possible time.
-        LMIC_setTxData2(1, mydata, sizeof(mydata)-1, 0);
-        Serial.println(F("Packet queued"));
+        if (gps.location.isValid() && gps.hdop.isValid() && gps.location.age() < 2000) { //Prepare payload, inspired by https://github.com/jpmeijers/RN2483-Arduino-Library/blob/master/examples/SodaqOne-TTN-Mapper-binary/SodaqOne-TTN-Mapper-binary.ino
+            uint32_t LatitudeBinary, LongitudeBinary;
+            uint16_t altitudeGps;
+            uint8_t hdopGps;
+
+            LatitudeBinary = (((float)gps.location.lat() + 90) / 180) * 16777215;
+            LongitudeBinary = (((float)gps.location.lng() + 180) / 360) * 16777215;
+            altitudeGps = gps.altitude.meters();
+            hdopGps = gps.hdop.hdop()*10;
+
+            txBuffer[0] = ( LatitudeBinary >> 16 ) & 0xFF;
+            txBuffer[1] = ( LatitudeBinary >> 8 ) & 0xFF;
+            txBuffer[2] = LatitudeBinary & 0xFF;
+            txBuffer[3] = ( LongitudeBinary >> 16 ) & 0xFF;
+            txBuffer[4] = ( LongitudeBinary >> 8 ) & 0xFF;
+            txBuffer[5] = LongitudeBinary & 0xFF;
+            txBuffer[6] = ( altitudeGps >> 8 ) & 0xFF;
+            txBuffer[7] = altitudeGps & 0xFF;
+            txBuffer[8] = hdopGps & 0xFF;     
+        
+            LMIC_setTxData2(1, txBuffer, sizeof(txBuffer)-1, 0);
+            Serial.println(F("Valid GPS packet queued"));
+        } else { //Send heartbeat if invalid GPS data
+            txBuffer[0] = 255;
+            txBuffer[1] = '\0';
+            LMIC_setTxData2(1, txBuffer, 1, 0);
+            Serial.println(F("Heartbeat GPS packet queued"));
+        }
     }
     // Next TX is scheduled after TX_COMPLETE event.
 }
